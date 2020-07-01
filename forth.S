@@ -1871,3 +1871,14 @@ data_segment_top:
 scratch_pad:
 	.space 	SCRATCH_PAD_SIZE
 scratch_pad_top:
+
+	.section .rodata
+	.global	forth_bootstrap
+	.align	3
+forth_bootstrap:
+	.incbin "forth.f"
+
+	.global	forth_bootstrap_size
+	.align	3
+forth_bootstrap_size:
+	.quad 	forth_bootstrap_size - forth_bootstrap

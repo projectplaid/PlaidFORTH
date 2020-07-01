@@ -14,7 +14,7 @@ all: plaid.elf
 %.o: %.c
 	$(XCC) $(XCFLAGS) -c $< -o $@
 
-%.o: %.S
+%.o: %.S forth.f
 	$(XCC) $(XCFLAGS) -c $< -o $@
 
 plaid.elf: $(SOBJS) $(COBJS)
