@@ -124,3 +124,21 @@ void uart_puts(char *s)
         uart_send((unsigned int)c);
     }
 }
+
+char uart_getc_echo()
+{
+    char ch = uart_getc();
+
+    switch (ch)
+    {
+    case '\b':
+        uart_send('\b');
+        uart_send(' ');
+        uart_send('\b');
+        break;
+    default:
+        uart_send((unsigned int)ch);
+    }
+
+    return ch;
+}

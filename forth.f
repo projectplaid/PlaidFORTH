@@ -1,5 +1,5 @@
-\ Annotation has been removed from this file to expedite processing.
-\ See the files in the /annexia/ for a full Literate Code tutorial, it's great!
+\ \ Annotation has been removed from this file to expedite processing.
+\ \ See the files in the /annexia/ for a full Literate Code tutorial, it's great!
 
 : '\n' 10 ;
 : BL 32 ;
@@ -167,5 +167,5 @@ HIDE PRINT-PRETTY-DFA-OFFSET
 		." OK " CR
 	THEN
 ;
-WELCOME
-HIDE WELCOME
+\ WELCOME
+\ HIDE WELCOME

@@ -102,6 +102,18 @@ SCRATCH6 .req x28
 	ldp     x0, x1, [\reg], #16
 	.endm
 
+	.macro getchar
+	ldr		SCRATCH6, =key_vector
+	ldr		SCRATCH6, [SCRATCH6]
+	blr		SCRATCH6
+	.endm
+
+	.macro putchar
+	ldr		SCRATCH6, =emit_vector
+	ldr		SCRATCH6, [SCRATCH6]
+	blr		SCRATCH6
+	.endm
+
 	.macro DSP_TO_SP_FOR_ABI_CALL
 	mov 	SCRATCH0, DSP
 	tst 	SCRATCH0, #0xF
@@ -129,6 +141,7 @@ jonesforth:
 	ldr 	x0, =data_segment           // Get the initial data segment address
 	ldr 	x1, =var_HERE               // Initialize HERE to point at
 	str 	x0, [x1]                    //   the beginning of data segment
+	bl		bootstrap					// set up to read the main forth source
 	ldr 	FIP, =cold_start            // Make the FIP point to cold_start
 	NEXT                            // Start the interpreter
 
@@ -159,12 +172,47 @@ _NEXT:
 	.endm
 	NEXT_BODY
 
+	.data
+	.align	3
+read_bootstrap_pos:
+	.quad	forth_bootstrap
+
+	.text
+	.align	2
+read_bootstrap:
+	ldr		SCRATCH5, =read_bootstrap_pos
+	ldr		SCRATCH5, [SCRATCH5]
+	ldr		SCRATCH6, =forth_bootstrap_end
+
+	cmp		SCRATCH5, SCRATCH6
+	bge		2f
+
+	ldrb	w0, [SCRATCH5], #1
+	ldr		SCRATCH6, =read_bootstrap_pos
+	str		SCRATCH5, [SCRATCH6]
+	b 		3f
+2:
+	// at the end
+	ldr		SCRATCH5, =uart_getc_echo
+	ldr 	SCRATCH6, =key_vector
+	str		SCRATCH5, [SCRATCH6]
+
+3:
+	ret
+
+	.align	2
+	.global	bootstrap
+bootstrap:
+	ldr		SCRATCH5, =read_bootstrap
+	ldr		SCRATCH6, =key_vector
+	str 	SCRATCH5, [SCRATCH6]
+	ret
+
 // cold_start is used to bootstrap the interpreter, 
 // the first word executed is QUIT
 	.section .rodata
 cold_start:
 	.quad 	QUIT
-
 
 //// Now we define a set of helper macros that are syntactic sugar
 //// to ease the declaration of FORTH words, Native words, FORTH variables
@@ -816,7 +864,7 @@ defcode "DSP!",,DSPSTORE
 // KEY ( -- c ) Reads a character from stdin
 defcode "KEY",,KEY
 	DSP_TO_SP_FOR_ABI_CALL
-	bl 		uart_getc              // x0 = uart_getc();
+	getchar
 	PUSHDSP x0              // push the return value on the stack
 	NEXT
 
@@ -824,7 +872,7 @@ defcode "KEY",,KEY
 defcode "EMIT",,EMIT
 	POPDSP 	x0
 	DSP_TO_SP_FOR_ABI_CALL
-	bl 		uart_send              // uart_send(x0);
+	putchar
 	NEXT
 
 // CR ( -- ) print newline
@@ -832,7 +880,7 @@ defcode "EMIT",,EMIT
 defcode "CR",,CR
 	mov 	x0, #10
 	DSP_TO_SP_FOR_ABI_CALL
-	bl 		uart_send              // uart_send('\n');
+	putchar
 	NEXT
 
 // SPACE ( -- ) print space
@@ -840,7 +888,7 @@ defcode "CR",,CR
 defcode "SPACE",,SPACE
 	mov 	x0, #32
 	DSP_TO_SP_FOR_ABI_CALL
-	bl 		uart_send              // uart_send(' ');
+	putchar
 	NEXT
 
 // WORD ( -- addr length ) reads next word from stdin
@@ -857,7 +905,7 @@ _WORD:
 
 	DSP_TO_SP_FOR_ABI_CALL
 1:
-	bl 		uart_getc              // read a character
+	getchar
 	cmp 	x0, #'\\'
 	beq 	3f                  // skip comments until end of line
 	cmp 	x0, #' '
@@ -866,7 +914,7 @@ _WORD:
 	ldr     x6, =word_buffer
 2:
 	strb 	w0, [x6], #1       // store character in word buffer
-	bl 		uart_getc              // read more characters until a space is found
+	getchar
 	cmp 	x0, #' '
 	bgt 	2b
 
@@ -877,7 +925,7 @@ _WORD:
 	POPDSP 	x6
 	ret
 3:
-	bl 		uart_getc              // skip all characters until end of line
+	getchar
 	cmp 	x0, #'\n'
 	bne 	3b
 	b 		1b
@@ -1375,7 +1423,7 @@ _TELL:
 	b 		2f
 1:                              // while (--SCRATCH1 > 0) {
 	ldrb 	w0, [SCRATCH0], #1 //     x0 = *SCRATCH0++;
-	bl 		uart_send              //     uart_send(x0);
+	putchar
 2:                              // }
 	subs 	SCRATCH1, SCRATCH1, #1
 	bge 	1b
@@ -1452,7 +1500,7 @@ _UDOT:
 	bl      _TELL                   // display number
 	mov     x0, #32                 // space character
 	DSP_TO_SP_FOR_ABI_CALL
-	bl      uart_send                 // print trailing space
+	putchar
 
 	POPDSP 	lr
 	POPDSP 	x1
@@ -1509,7 +1557,7 @@ _DOT:
 	mov     x0, #32                 // space character
 
 	DSP_TO_SP_FOR_ABI_CALL
-	bl      uart_send                 // print trailing space
+	putchar
 
 	POPDSP  lr
 	POPDSP  x1
@@ -1872,13 +1920,22 @@ scratch_pad:
 	.space 	SCRATCH_PAD_SIZE
 scratch_pad_top:
 
+// indirection for which function is used to read/write characters
+// super useful for reading in the initial Forth code at startup
+	.data
+	.align 	3
+emit_vector:
+	.quad	uart_send
+
+	.data
+	.align	3
+key_vector:
+	.quad	uart_getc_echo
+
 	.section .rodata
 	.global	forth_bootstrap
-	.align	3
+	.align	2
 forth_bootstrap:
 	.incbin "forth.f"
-
-	.global	forth_bootstrap_size
-	.align	3
-forth_bootstrap_size:
-	.quad 	forth_bootstrap_size - forth_bootstrap
+	.align	2
+forth_bootstrap_end:
